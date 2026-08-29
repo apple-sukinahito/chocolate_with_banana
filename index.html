@@ -64,7 +64,6 @@
     </form>
 
     <div id="postsContainer"></div>
-
     <script>
         const form = document.getElementById('bbsForm');
         const container = document.getElementById('postsContainer');
@@ -200,9 +199,19 @@
                 } else {
                     alert('書き込みに失敗しました。');
                 }
+            } catch (err) {
+                alert('エラーが発生しました。');
             }
-        catch (err)
-            {alert('エラーが発生しました。');
-        }});
-        function escapeHtml(str) {if (!str) return "";
-                                  return str.split(String.fromCharCode(38)).join(String.fromCharCode(38) + "amp;").split(String.fromCharCode(60)).join(String.fromCharCode(38) + "lt;").split(String.fromCharCode(62)).join(String.fromCharCode(38) + "gt;").split(String.fromCharCode(34)).join(String.fromCharCode(38) + "quot;").split(String.fromCharCode(39)).join(String.fromCharCode(38) + "#39;");}loadPosts();
+        });
+
+        function escapeHtml(str) {
+            if (!str) return "";
+            const div = document.createElement("div");
+            div.textContent = str;
+            return div.innerHTML;
+        }
+
+        loadPosts();
+    </script>
+</body>
+</html>
