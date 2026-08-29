@@ -12,13 +12,34 @@
         label { display: block; font-weight: bold; margin-bottom: 5px; font-size: 0.9rem; }
         input[type="text"], textarea { width: 100%; padding: 8px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px; }
         textarea { height: 80px; resize: vertical; }
-        button { background: #f37021; color: white; border: none; padding: 10px 15px; border-radius: 4px; cursor: pointer; width: 100%; font-size: 1rem; font-weight: bold; }
+        
+        /* ボタン周りの調整 */
+        .btn-container { display: flex; gap: 10px; }
+        button { background: #f37021; color: white; border: none; padding: 10px 15px; border-radius: 4px; cursor: pointer; font-size: 1rem; font-weight: bold; flex: 1; }
         button:hover { background: #e05d0c; }
-        .post { background: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 15px; }
-        .post-header { font-size: 0.85rem; color: #666; margin-bottom: 8px; border-bottom: 1px dashed #eee; padding-bottom: 5px; }
+        .update-btn { background: #555; }
+        .update-btn:hover { background: #333; }
+
+        /* 返信モード時のアラート表示 */
+        .reply-alert { display: none; background: #ffe9cc; padding: 8px 12px; border-radius: 4px; font-size: 0.85rem; margin-bottom: 10px; color: #e05d0c; font-weight: bold; }
+        .reply-alert button { width: auto; display: inline; padding: 2px 8px; margin-left: 10px; background: #888; font-size: 0.75rem; }
+
+        /* 投稿一覧の見た目 */
+        .post-container { margin-bottom: 20px; }
+        .post { background: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); transition: background 0.5s; }
+        .post-header { font-size: 0.85rem; color: #666; margin-bottom: 8px; border-bottom: 1px dashed #eee; padding-bottom: 5px; display: flex; justify-content: space-between; }
+        .post-num { font-weight: bold; color: #333; }
         .post-name { color: green; font-weight: bold; }
         .post-id { color: #1a0dab; }
         .post-message { white-space: pre-wrap; font-size: 1rem; line-height: 1.5; }
+        
+        /* アンカーリンクと返信ボタン */
+        .anchor-link { color: #1a0dab; text-decoration: underline; cursor: pointer; font-weight: bold; }
+        .reply-trigger { color: #f37021; cursor: pointer; text-decoration: underline; font-size: 0.85rem; }
+
+        /* 返信レスのインデント（ツリー構造） */
+        .replies-list { margin-left: 30px; border-left: 2px solid #f37021; padding-left: 15px; margin-top: 10px; }
+        .reply-post { background: #fafafa; padding: 12px; border-radius: 6px; box-shadow: inset 0 1px 3px rgba(0,0,0,0.05); margin-bottom: 8px; transition: background 0.5s; }
     </style>
 </head>
 <body>
@@ -27,6 +48,14 @@
 
     <!-- 投稿フォーム -->
     <form id="bbsForm">
+        <div id="replyAlert" class="reply-alert">
+            &gt;&gt;<span id="replyTargetId">0</span> への返信モード中
+            <button type="button" onclick="cancelReply()">キャンセル</button>
+        </div>
+        
+        <!-- 返信先IDを保持する隠し入力欄 -->
+        <input type="hidden" id="replyTo" value="">
+
         <div class="input-group">
             <label for="name">お名前</label>
             <input type="text" id="name" placeholder="ばなな">
@@ -35,7 +64,10 @@
             <label for="message">本文</label>
             <textarea id="message" required placeholder="ここにメッセージを入力してください"></textarea>
         </div>
-        <button type="submit">書き込む</button>
+        <div class="btn-container">
+            <button type="submit" id="submitBtn">書き込む</button>
+            <button type="button" class="update-btn" onclick="loadPosts()">更新</button>
+        </div>
     </form>
 
     <!-- 投稿一覧の表示場所 -->
@@ -44,30 +76,100 @@
     <script>
         const form = document.getElementById('bbsForm');
         const container = document.getElementById('postsContainer');
+        const replyToInput = document.getElementById('replyTo');
+        const replyAlert = document.getElementById('replyAlert');
+        const replyTargetId = document.getElementById('replyTargetId');
+        const submitBtn = document.getElementById('submitBtn');
+
+        // 返信モード移行
+        window.setReply = function(id) {
+            replyToInput.value = id;
+            replyTargetId.textContent = id;
+            replyAlert.style.display = 'block';
+            submitBtn.textContent = `>>${id} に返信する`;
+            window.scrollTo({ top: form.offsetTop - 20, behavior: 'smooth' });
+        };
+
+        // 返信モード解除
+        window.cancelReply = function() {
+            replyToInput.value = '';
+            replyAlert.style.display = 'none';
+            submitBtn.textContent = '書き込む';
+        };
+
+        // アンカーをクリックした時に指定の投稿へジャンプして光らせる
+        window.scrollToPost = function(id) {
+            const element = document.getElementById(`post-${id}`);
+            if (element) {
+                element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                const originalBg = element.style.background;
+                element.style.background = '#ffffcc';
+                setTimeout(() => { element.style.background = originalBg; }, 1500);
+            } else {
+                alert('対象の書き込みが見つかりません。');
+            }
+        };
+
+        // 本文の中の >>1 などをリンクに変える
+        function parseAnchors(text) {
+            const escaped = escapeHtml(text);
+            return escaped.replace(/&gt;&gt;(\d+)/g, (match, p1) => {
+                return `<span class="anchor-link" onclick="scrollToPost(${p1})">&gt;&gt;${p1}</span>`;
+            });
+        }
 
         // 投稿一覧を取得して表示する関数
         async function loadPosts() {
             try {
                 const res = await fetch('/api/posts');
                 if (!res.ok) throw new Error('読み込み失敗');
-                const posts = await res.json();
+                const allPosts = await res.json();
                 
-                container.innerHTML = posts.length === 0 
-                    ? '<p style="text-align:center; color:#88h;">まだ投稿はありません。</p>' 
-                    : posts.map(post => {
-                        const date = new Date(post.created_at).toLocaleString('ja-JP');
-                        return `
-                            <div class="post">
+                // 親投稿（reply_toが空のもの）だけを抽出
+                const parentPosts = allPosts.filter(p => p.reply_to === null);
+                
+                if (parentPosts.length === 0) {
+                    container.innerHTML = '<p style="text-align:center; color:#888;">まだ投稿はありません。</p>';
+                    return;
+                }
+
+                container.innerHTML = parentPosts.map(parent => {
+                    const parentDate = new Date(parent.created_at).toLocaleString('ja-JP');
+                    
+                    // この親投稿に対する子レスを抽出
+                    const childReplies = allPosts.filter(p => p.reply_to === parent.id);
+                    
+                    // 子レスのHTML組み立て
+                    const repliesHtml = childReplies.length === 0 ? '' : `
+                        <div class="replies-list">
+                            ${childReplies.map(reply => {
+                                const replyDate = new Date(reply.created_at).toLocaleString('ja-JP');
+                                return `
+                                    <div class="reply-post" id="post-${reply.id}">
+                                        <div class="post-header">
+                                            <div><span class="post-num">${reply.id}</span> | 名前: <span class="post-name">${escapeHtml(reply.name)}</span></div>
+                                            <div>${replyDate} | ID: <span class="post-id">${reply.user_id}</span></div>
+                                        </div>
+                                        <div class="post-message">${parseAnchors(reply.message)}</div>
+                                    </div>
+                                `;
+                            }).join('')}
+                        </div>
+                    `;
+
+                    return `
+                        <div class="post-container">
+                            <div class="post" id="post-${parent.id}">
                                 <div class="post-header">
-                                    <span>${post.id}</span> | 
-                                    名前: <span class="post-name">${escapeHtml(post.name)}</span> | 
-                                    日時: <span>${date}</span> | 
-                                    ID: <span class="post-id">${post.user_id}</span>
+                                    <div><span class="post-num">${parent.id}</span> | 名前: <span class="post-name">${escapeHtml(parent.name)}</span> | 日時: <span>${parentDate}</span> | ID: <span class="post-id">${parent.user_id}</span></div>
+                                    <span class="reply-trigger" onclick="setReply(${parent.id})">[返信する]</span>
                                 </div>
-                                <div class="post-message">${escapeHtml(post.message)}</div>
+                                <div class="post-message">${parseAnchors(parent.message)}</div>
                             </div>
-                        `;
-                    }).join('');
+                            ${repliesHtml}
+                        </div>
+                    `;
+                }).join('');
             } catch (err) {
                 container.innerHTML = '<p style="color:red;">データの取得に失敗しました。</p>';
             }
@@ -76,18 +178,20 @@
         // 投稿を送信する処理
         form.addEventListener('submit', async (e) => {
             e.preventDefault();
-            const name = document.getElementById('name').value;
+            const name = document.getElementById('name').value || "ばなな"; // 空欄ならデフォルト枠
             const message = document.getElementById('message').value;
+            const reply_to = replyToInput.value ? parseInt(replyToInput.value, 10) : null; // ★ここがバグってnullになっていました
 
             try {
                 const res = await fetch('/api/posts', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ name, message })
+                    body: JSON.stringify({ name, message, reply_to }) // 正しい変数名で送信
                 });
 
                 if (res.ok) {
                     document.getElementById('message').value = ''; // 本文だけ空にする
+                    cancelReply(); // 返信モード解除
                     loadPosts(); // 一覧を再読み込み
                 } else {
                     alert('書き込みに失敗しました。');
@@ -97,7 +201,7 @@
             }
         });
 
-        // 安全対策（HTMLエスケープ）
+        // 安全対策（HTMLエスケープ）修正版
         function escapeHtml(str) {
             return str.replace(/[&<>"']/g, match => ({
                 '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
