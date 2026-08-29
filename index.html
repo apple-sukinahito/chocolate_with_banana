@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>お気軽掲示板</title>
+    <title>チョコばななぁ</title>
     <style>
         body { font-family: sans-serif; max-width: 600px; margin: 20px auto; padding: 0 10px; background: #f5f5f5; color: #333; }
         h1 { text-align: center; color: #f37021; }
@@ -23,13 +23,13 @@
 </head>
 <body>
 
-    <h1>お気軽掲示板 🚀</h1>
+    <h1>チョコばななぁ</h1>
 
     <!-- 投稿フォーム -->
     <form id="bbsForm">
         <div class="input-group">
-            <label for="name">お名前（空欄で名無しさん）</label>
-            <input type="text" id="name" placeholder="名無しさん">
+            <label for="name">お名前</label>
+            <input type="text" id="name" placeholder="ばなな">
         </div>
         <div class="input-group">
             <label for="message">本文</label>
@@ -59,7 +59,7 @@
                         return `
                             <div class="post">
                                 <div class="post-header">
-                                    番目: <span>${post.id}</span> | 
+                                    <span>${post.id}</span> | 
                                     名前: <span class="post-name">${escapeHtml(post.name)}</span> | 
                                     日時: <span>${date}</span> | 
                                     ID: <span class="post-id">${post.user_id}</span>
