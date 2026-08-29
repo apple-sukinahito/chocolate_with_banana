@@ -40,9 +40,9 @@ export async function onRequest(context) {
       const hashArray = Array.from(new Uint8Array(hashBuffer));
       const userId = hashArray.map(b => b.toString(16).padStart(2, "0")).join("").substring(0, 8);
 
-      // データベース(D1)に保存 (reply_to を追加)
+      // データベース(D1)に保存 (+9 hours して日本時間にする)
       await env.DB.prepare(
-        "INSERT INTO posts (name, user_id, message, reply_to) VALUES (?, ?, ?, ?)"
+        "INSERT INTO posts (name, user_id, message, reply_to, created_at) VALUES (?, ?, ?, ?, datetime('now', '+9 hours'))"
       ).bind(name, userId, message, replyTo).run();
 
       return new Response(JSON.stringify({ success: true }), {
