@@ -25,7 +25,7 @@
         .post-container { margin-bottom: 20px; }
         .post { background: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); transition: background 0.5s; }
         .post-header { font-size: 0.85rem; color: #666; margin-bottom: 8px; border-bottom: 1px dashed #eee; padding-bottom: 5px; display: flex; justify-content: space-between; }
-        .post-num { font-weight: bold; color: #333; font-size: 1.1rem; }
+        .post-num { font-weight: normal; color: #333; }
         .post-name { color: green; font-weight: bold; }
         .post-id { color: #1a0dab; }
         .post-message { white-space: pre-wrap; font-size: 1rem; line-height: 1.5; }
@@ -33,7 +33,6 @@
         .anchor-link { color: #1a0dab; text-decoration: underline; cursor: pointer; font-weight: bold; }
         .reply-trigger { color: #f37021; cursor: pointer; text-decoration: underline; font-size: 0.85rem; }
 
-        /* 返信レスのインデント（ツリー構造） */
         .replies-list { margin-left: 30px; border-left: 2px solid #f37021; padding-left: 15px; margin-top: 10px; }
         .reply-post { background: #fafafa; padding: 12px; border-radius: 6px; box-shadow: inset 0 1px 3px rgba(0,0,0,0.05); margin-bottom: 8px; transition: background 0.5s; }
     </style>
@@ -42,7 +41,6 @@
 
     <h1>チョコばななぁ</h1>
 
-    <!-- 投稿フォーム -->
     <form id="bbsForm">
         <div id="replyAlert" class="reply-alert">
             &gt;&gt;<span id="replyTargetId">0</span> への返信モード中
@@ -65,7 +63,6 @@
         </div>
     </form>
 
-    <!-- 投稿一覧の表示場所 -->
     <div id="postsContainer"></div>
 
     <script>
@@ -90,8 +87,8 @@
             submitBtn.textContent = '書き込む';
         };
 
-        window.scrollToPost = function(id) {
-            const element = document.getElementById(`post-${id}`);
+        window.scrollToPost = function(dbId) {
+            const element = document.getElementById(`post-db-${dbId}`);
             if (element) {
                 element.scrollIntoView({ behavior: 'smooth', block: 'center' });
                 const originalBg = element.style.background;
@@ -102,10 +99,15 @@
             }
         };
 
-        function parseAnchors(text) {
+        function parseAnchors(text, sortedOldestParents) {
             const escaped = escapeHtml(text);
             return escaped.replace(/&gt;&gt;(\d+)/g, (match, p1) => {
-                return `<span class="anchor-link" onclick="scrollToPost(${p1})">&gt;&gt;${p1}</span>`;
+                const targetDisplayNum = parseInt(p1, 10);
+                const targetPost = sortedOldestParents[targetDisplayNum - 1];
+                if (targetPost) {
+                    return `<span class="anchor-link" onclick="scrollToPost(${targetPost.id})">&gt;&gt;${p1}</span>`;
+                }
+                return match;
             });
         }
 
@@ -115,17 +117,21 @@
                 if (!res.ok) throw new Error('読み込み失敗');
                 const allPosts = await res.json();
                 
-                const parentPosts = allPosts
+                const sortedOldestParents = allPosts
                     .filter(p => p.reply_to === null)
-                    .sort((a, b) => b.id - a.id);
+                    .sort((a, b) => a.id - b.id);
                 
-                if (parentPosts.length === 0) {
+                if (sortedOldestParents.length === 0) {
                     container.innerHTML = '<p style="text-align:center; color:#888;">まだ投稿はありません。</p>';
                     return;
                 }
 
-                container.innerHTML = parentPosts.map(parent => {
+                const displayParents = [...sortedOldestParents].reverse();
+
+                container.innerHTML = displayParents.map(parent => {
                     const parentDate = new Date(parent.created_at).toLocaleString('ja-JP');
+                    const displayNum = sortedOldestParents.indexOf(parent) + 1;
+                    
                     const childReplies = allPosts
                         .filter(p => p.reply_to === parent.id)
                         .sort((a, b) => a.id - b.id);
@@ -135,12 +141,12 @@
                             ${childReplies.map(reply => {
                                 const replyDate = new Date(reply.created_at).toLocaleString('ja-JP');
                                 return `
-                                    <div class="reply-post" id="post-${reply.id}">
+                                    <div class="reply-post" id="post-db-${reply.id}">
                                         <div class="post-header">
                                             <div>名前: <span class="post-name">${escapeHtml(reply.name)}</span></div>
                                             <div>${replyDate} | ID: <span class="post-id">${reply.user_id}</span></div>
                                         </div>
-                                        <div class="post-message">${parseAnchors(reply.message)}</div>
+                                        <div class="post-message">${parseAnchors(reply.message, sortedOldestParents)}</div>
                                     </div>
                                 `;
                             }).join('')}
@@ -149,13 +155,12 @@
 
                     return `
                         <div class="post-container">
-                            <div class="post" id="post-${parent.id}">
+                            <div class="post" id="post-db-${parent.id}">
                                 <div class="post-header">
-                                    <!-- ★「番目:」を削って数字のみを少し大きめに表示 -->
-                                    <div><span class="post-num">${parent.id}</span> | 名前: <span class="post-name">${escapeHtml(parent.name)}</span> | 日時: <span>${parentDate}</span> | ID: <span class="post-id">${parent.user_id}</span></div>
-                                    <span class="reply-trigger" onclick="setReply(${parent.id})">[返信する]</span>
+                                    <div><span class="post-num">${displayNum}</span> | 名前: <span class="post-name">${escapeHtml(parent.name)}</span> | 日時: <span>${parentDate}</span> | ID: <span class="post-id">${parent.user_id}</span></div>
+                                    <span class="reply-trigger" onclick="setReply(${displayNum})">[返信する]</span>
                                 </div>
-                                <div class="post-message">${parseAnchors(parent.message)}</div>
+                                <div class="post-message">${parseAnchors(parent.message, sortedOldestParents)}</div>
                             </div>
                             ${repliesHtml}
                         </div>
@@ -170,7 +175,16 @@
             e.preventDefault();
             const name = document.getElementById('name').value || "ばなな";
             const message = document.getElementById('message').value;
-            const reply_to = replyToInput.value ? parseInt(replyToInput.value, 10) : null;
+            
+            let reply_to = null;
+            if (replyToInput.value) {
+                const displayNum = parseInt(replyToInput.value, 10);
+                const res = await fetch('/api/posts');
+                const allPosts = await res.json();
+                const sortedOldestParents = allPosts.filter(p => p.reply_to === null).sort((a, b) => a.id - b.id);
+                const targetPost = sortedOldestParents[displayNum - 1];
+                if (targetPost) reply_to = targetPost.id;
+            }
 
             try {
                 const res = await fetch('/api/posts', {
@@ -186,19 +200,9 @@
                 } else {
                     alert('書き込みに失敗しました。');
                 }
-            } catch (err) {
-                alert('エラーが発生しました。');
             }
-        });
-
-        // 完全に安全なHTMLエスケープ
-        function escapeHtml(str) {
-            return str.replace(/[&<>"']/g, match => ({
-                '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
-            })[match]);
-        }
-
-        loadPosts();
-    </script>
-</body>
-</html>
+        catch (err)
+            {alert('エラーが発生しました。');
+        }});
+        function escapeHtml(str) {if (!str) return "";
+                                  return str.split(String.fromCharCode(38)).join(String.fromCharCode(38) + "amp;").split(String.fromCharCode(60)).join(String.fromCharCode(38) + "lt;").split(String.fromCharCode(62)).join(String.fromCharCode(38) + "gt;").split(String.fromCharCode(34)).join(String.fromCharCode(38) + "quot;").split(String.fromCharCode(39)).join(String.fromCharCode(38) + "#39;");}loadPosts();
